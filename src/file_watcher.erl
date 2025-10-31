@@ -9,21 +9,21 @@
     current_files :: map()
 }).
 
-% Simple, clean file watcher
+% Enhanced file watcher with modification detection
 start_watching(Directory) ->
-    io:format("🔮 Starting file watcher for: ~s~n", [Directory]),
+    io:format("🔮 Starting enhanced file watcher for: ~s~n", [Directory]),
 
     % Ensure directory exists
     AbsDir = filename:absname(Directory),
     ensure_directory(AbsDir),
 
-    % Get initial files
-    InitialFiles = scan_files(AbsDir),
+    % Get initial files with detailed info
+    InitialFiles = scan_files_detailed(AbsDir),
     io:format("📊 Found ~p initial files~n", [map_size(InitialFiles)]),
 
     % Start watcher process
     Pid = spawn_link(fun() ->
-        watch_loop(#watcher_state{
+        enhanced_watch_loop(#watcher_state{
             directory = AbsDir,
             current_files = InitialFiles
         })
@@ -43,7 +43,7 @@ get_events({watcher_ref, PidStr}) ->
                         case Events of
                             [] -> [];
                             _ ->
-                                io:format("📡 Returning ~p events~n", [length(Events)]),
+                                io:format("📡 Returning ~p events (including modifications)~n", [length(Events)]),
                                 Events
                         end
                 after 1000 -> []
@@ -64,15 +64,15 @@ stop_watching({watcher_ref, PidStr}) ->
     end,
     ok.
 
-% Main watch loop - CLEAN VERSION
-watch_loop(State) ->
+% Enhanced watch loop with modification detection
+enhanced_watch_loop(State) ->
     #watcher_state{directory = Dir, current_files = OldFiles} = State,
 
-    % Scan for new files
-    NewFiles = scan_files(Dir),
+    % Scan for current file state
+    NewFiles = scan_files_detailed(Dir),
 
-    % Detect changes
-    Events = detect_changes(OldFiles, NewFiles),
+    % Detect all types of changes (create, delete, modify)
+    Events = detect_all_changes(OldFiles, NewFiles),
 
     % Print changes if any
     case Events of
@@ -87,37 +87,37 @@ watch_loop(State) ->
     receive
         {get_events, From} ->
             From ! {events, Events},
-            watch_loop(State#watcher_state{current_files = NewFiles});
+            enhanced_watch_loop(State#watcher_state{current_files = NewFiles});
         stop ->
-            io:format("🛑 Watcher stopped~n")
-    after 500 ->
-        watch_loop(State#watcher_state{current_files = NewFiles})
+            io:format("🛑 Enhanced watcher stopped~n")
+    after 200 ->  % Faster polling for modification detection
+        enhanced_watch_loop(State#watcher_state{current_files = NewFiles})
     end.
 
-% Scan directory for files - SIMPLE VERSION with proper file_info usage
-scan_files(Directory) ->
+% Detailed file scanning that captures modification times and file sizes
+scan_files_detailed(Directory) ->
     case file:list_dir(Directory) of
         {ok, Files} ->
             lists:foldl(fun(File, Acc) ->
                 FilePath = filename:join(Directory, File),
                 case file:read_file_info(FilePath) of
                     {ok, FileInfo} ->
-                        % Use the proper file_info record fields
                         IsDir = FileInfo#file_info.type =:= directory,
                         MTime = FileInfo#file_info.mtime,
-                        maps:put(FilePath, {MTime, IsDir}, Acc);
+                        Size = FileInfo#file_info.size,
+
+                        % Store more detailed file info: {MTime, IsDir, Size}
+                        maps:put(FilePath, {MTime, IsDir, Size}, Acc);
                     {error, _Reason} ->
-                        % Skip files we can't read
                         Acc
                 end
             end, #{}, Files);
         {error, _Reason} ->
-            % Return empty map if we can't list directory
             #{}
     end.
 
-% Detect file changes - CLEAN VERSION
-detect_changes(OldFiles, NewFiles) ->
+% Enhanced change detection that includes modifications
+detect_all_changes(OldFiles, NewFiles) ->
     OldPaths = sets:from_list(maps:keys(OldFiles)),
     NewPaths = sets:from_list(maps:keys(NewFiles)),
 
@@ -125,18 +125,40 @@ detect_changes(OldFiles, NewFiles) ->
     Created = sets:to_list(sets:subtract(NewPaths, OldPaths)),
     Deleted = sets:to_list(sets:subtract(OldPaths, NewPaths)),
 
+    % Find modified files (files that exist in both but have different mtime or size)
+    CommonPaths = sets:to_list(sets:intersection(OldPaths, NewPaths)),
+    Modified = lists:filter(fun(Path) ->
+        file_was_modified(Path, OldFiles, NewFiles)
+    end, CommonPaths),
+
     Timestamp = erlang:system_time(millisecond),
 
-    % Create events as tuples
-    CreatedEvents = [{"created", Path, get_is_dir(Path, NewFiles), Timestamp} || Path <- Created],
-    DeletedEvents = [{"deleted", Path, get_is_dir(Path, OldFiles), Timestamp} || Path <- Deleted],
+    % Create events
+    CreatedEvents = [{"created", Path, get_is_dir_enhanced(Path, NewFiles), Timestamp} || Path <- Created],
+    DeletedEvents = [{"deleted", Path, get_is_dir_enhanced(Path, OldFiles), Timestamp} || Path <- Deleted],
+    ModifiedEvents = [{"modified", Path, get_is_dir_enhanced(Path, NewFiles), Timestamp} || Path <- Modified],
 
-    CreatedEvents ++ DeletedEvents.
+    % Filter out directory modifications (usually not interesting)
+    FilteredModified = lists:filter(fun({"modified", Path, IsDir, _}) ->
+        not IsDir  % Only report file modifications, not directory modifications
+    end, ModifiedEvents),
+
+    CreatedEvents ++ DeletedEvents ++ FilteredModified.
+
+% Check if a file was modified by comparing mtime and size
+file_was_modified(Path, OldFiles, NewFiles) ->
+    case {maps:get(Path, OldFiles, undefined), maps:get(Path, NewFiles, undefined)} of
+        {{OldMTime, IsDir, OldSize}, {NewMTime, IsDir, NewSize}} ->
+            % File was modified if mtime or size changed (and it's not a directory)
+            (not IsDir) andalso ((OldMTime =/= NewMTime) orelse (OldSize =/= NewSize));
+        _ ->
+            false
+    end.
 
 % Helper functions
-get_is_dir(Path, FileMap) ->
+get_is_dir_enhanced(Path, FileMap) ->
     case maps:get(Path, FileMap, undefined) of
-        {_MTime, IsDir} -> IsDir;
+        {_MTime, IsDir, _Size} -> IsDir;
         _ -> false
     end.
 
@@ -153,4 +175,7 @@ print_event({"created", Path, IsDir, _Time}) ->
     io:format("  🆕 CREATED ~s: ~s~n", [Type, filename:basename(Path)]);
 print_event({"deleted", Path, IsDir, _Time}) ->
     Type = case IsDir of true -> "DIR"; false -> "FILE" end,
-    io:format("  🗑️ DELETED ~s: ~s~n", [Type, filename:basename(Path)]).
+    io:format("  🗑️ DELETED ~s: ~s~n", [Type, filename:basename(Path)]);
+print_event({"modified", Path, IsDir, _Time}) ->
+    Type = case IsDir of true -> "DIR"; false -> "FILE" end,
+    io:format("  📝 MODIFIED ~s: ~s~n", [Type, filename:basename(Path)]).
