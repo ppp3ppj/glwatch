@@ -1,5 +1,7 @@
 # glwatch
 
+> Multi-language file monitoring and analysis tool
+
 [![Package Version](https://img.shields.io/hexpm/v/glwatch)](https://hex.pm/packages/glwatch)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/glwatch/)
 
