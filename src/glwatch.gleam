@@ -20,24 +20,27 @@ pub type EventType {
   Created
   Deleted
   Modified
-  Unknown
 }
 
 pub fn main() {
-  io.println("🎃 GLWATCH - Halloween File Monitor 🎃")
+  io.println("🎃 SIMPLE GLWATCH - Halloween File Monitor 🎃")
   io.println("═══════════════════════════════════════════")
+  io.println("Halloween 2025-10-31 - Simple & Reliable!")
   io.println("")
 
   start_glwatch()
 }
 
 fn start_glwatch() -> Nil {
-  io.println("🔮 Starting file watcher...")
+  io.println("🔮 Starting simple file watcher...")
 
   let watcher = erlang_start_watching("watched/")
 
   io.println("✅ GLWATCH is active!")
-  io.println("🎬 Try: echo 'BOO!' > watched/test.txt")
+  io.println("🎬 Try these Halloween commands:")
+  io.println("  echo 'BOO!' > watched/ghost.txt")
+  io.println("  echo 'More spooky!' >> watched/ghost.txt")
+  io.println("  rm watched/ghost.txt")
   io.println("")
 
   glwatch_loop(watcher)
@@ -46,11 +49,12 @@ fn start_glwatch() -> Nil {
 fn glwatch_loop(watcher: WatcherRef) -> Nil {
   case get_events_safe(watcher) {
     [] -> {
-      io.println("👁️  Monitoring... (create/delete files in watched/ folder)")
-      sleep(3000)
+      io.println("👁️  Monitoring... (create/modify/delete files)")
+      sleep(2000)
       glwatch_loop(watcher)
     }
     events -> {
+      io.println("")
       io.println("🔥 GLEAM RECEIVED " <> string.inspect(list.length(events)) <> " EVENTS:")
 
       list.each(events, process_event)
@@ -65,10 +69,15 @@ fn process_event(event: FileEvent) -> Nil {
   let FileEvent(event_type, path, is_directory, _timestamp) = event
 
   let emoji = case event_type {
-    Created -> "🆕"
-    Deleted -> "🗑️"
-    Modified -> "📝"
-    Unknown -> "❓"
+    Created -> "🆕👻"
+    Deleted -> "🗑️💀"
+    Modified -> "📝🎃"
+  }
+
+  let action = case event_type {
+    Created -> "MANIFESTED"
+    Deleted -> "VANISHED"
+    Modified -> "TRANSFORMED"
   }
 
   let item_type = case is_directory {
@@ -78,7 +87,7 @@ fn process_event(event: FileEvent) -> Nil {
 
   let filename = get_filename(path)
 
-  io.println("  " <> emoji <> " " <> item_type <> ": " <> filename)
+  io.println("  " <> emoji <> " " <> action <> " " <> item_type <> ": " <> filename)
 }
 
 // Safe event conversion
@@ -90,7 +99,6 @@ fn get_events_safe(watcher: WatcherRef) -> List(FileEvent) {
   }
 }
 
-// FIXED: Removed unreachable pattern
 fn convert_event(raw_event) -> Result(FileEvent, Nil) {
   case raw_event {
     #(type_str, path, is_dir, timestamp) -> {
@@ -98,7 +106,7 @@ fn convert_event(raw_event) -> Result(FileEvent, Nil) {
         "created" -> Created
         "deleted" -> Deleted
         "modified" -> Modified
-        _ -> Unknown
+        _ -> Created  // fallback
       }
 
       Ok(FileEvent(
