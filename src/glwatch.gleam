@@ -23,24 +23,24 @@ pub type EventType {
 }
 
 pub fn main() {
-  io.println("🎃 SIMPLE GLWATCH - Halloween File Monitor 🎃")
-  io.println("═══════════════════════════════════════════")
-  io.println("Halloween 2025-10-31 - Simple & Reliable!")
+  io.println("GLWATCH - File System Monitor")
+  io.println("=============================")
+  io.println("Professional file watcher for development")
   io.println("")
 
   start_glwatch()
 }
 
 fn start_glwatch() -> Nil {
-  io.println("🔮 Starting simple file watcher...")
+  io.println("[INFO] Initializing file watcher...")
 
   let watcher = erlang_start_watching("watched/")
 
-  io.println("✅ GLWATCH is active!")
-  io.println("🎬 Try these Halloween commands:")
-  io.println("  echo 'BOO!' > watched/ghost.txt")
-  io.println("  echo 'More spooky!' >> watched/ghost.txt")
-  io.println("  rm watched/ghost.txt")
+  io.println("[INFO] GLWATCH is now active and monitoring")
+  io.println("[INFO] Test commands:")
+  io.println("  echo 'Hello World' > watched/test.txt")
+  io.println("  echo 'More content' >> watched/test.txt")
+  io.println("  rm watched/test.txt")
   io.println("")
 
   glwatch_loop(watcher)
@@ -49,13 +49,13 @@ fn start_glwatch() -> Nil {
 fn glwatch_loop(watcher: WatcherRef) -> Nil {
   case get_events_safe(watcher) {
     [] -> {
-      io.println("👁️  Monitoring... (create/modify/delete files)")
+      io.println("[STATUS] Monitoring for file system changes...")
       sleep(2000)
       glwatch_loop(watcher)
     }
     events -> {
       io.println("")
-      io.println("🔥 GLEAM RECEIVED " <> string.inspect(list.length(events)) <> " EVENTS:")
+      io.println("[EVENTS] Received " <> string.inspect(list.length(events)) <> " file system events:")
 
       list.each(events, process_event)
       io.println("")
@@ -66,47 +66,51 @@ fn glwatch_loop(watcher: WatcherRef) -> Nil {
 }
 
 fn process_event(event: FileEvent) -> Nil {
-  let FileEvent(event_type, path, is_directory, _timestamp) = event
-
-  let emoji = case event_type {
-    Created -> "🆕👻"
-    Deleted -> "🗑️💀"
-    Modified -> "📝🎃"
-  }
+  let FileEvent(event_type, path, is_directory, timestamp) = event
 
   let action = case event_type {
-    Created -> "MANIFESTED"
-    Deleted -> "VANISHED"
-    Modified -> "TRANSFORMED"
+    Created -> "CREATED"
+    Deleted -> "DELETED"
+    Modified -> "MODIFIED"
   }
 
   let item_type = case is_directory {
-    True -> "DIR"
+    True -> "DIRECTORY"
     False -> "FILE"
   }
 
   let filename = get_filename(path)
+  let time_str = format_timestamp(timestamp)
 
-  io.println("  " <> emoji <> " " <> action <> " " <> item_type <> ": " <> filename)
+  io.println("  [" <> time_str <> "] " <> action <> " " <> item_type <> ": " <> filename)
 }
 
-// Safe event conversion
+// Safe event conversion - simplified approach
 fn get_events_safe(watcher: WatcherRef) -> List(FileEvent) {
   case erlang_get_events(watcher) {
     raw_events -> {
-      list.filter_map(raw_events, convert_event)
+      io.println("[DEBUG] Received " <> string.inspect(list.length(raw_events)) <> " raw events from Erlang")
+      list.filter_map(raw_events, convert_event_safe)
     }
   }
 }
 
-fn convert_event(raw_event) -> Result(FileEvent, Nil) {
+// Convert event using pattern matching (back to original approach with better error handling)
+fn convert_event_safe(raw_event) -> Result(FileEvent, Nil) {
+  io.println("[DEBUG] Raw event format: " <> string.inspect(raw_event))
+
   case raw_event {
     #(type_str, path, is_dir, timestamp) -> {
+      io.println("[DEBUG] Successfully matched tuple pattern")
+
       let event_type = case type_str {
         "created" -> Created
         "deleted" -> Deleted
         "modified" -> Modified
-        _ -> Created  // fallback
+        _ -> {
+          io.println("[WARN] Unknown event type: " <> string.inspect(type_str) <> ", defaulting to Modified")
+          Modified
+        }
       }
 
       Ok(FileEvent(
@@ -115,6 +119,11 @@ fn convert_event(raw_event) -> Result(FileEvent, Nil) {
         is_directory: is_dir,
         timestamp: timestamp
       ))
+    }
+    _ -> {
+      io.println("[ERROR] Event format did not match expected tuple pattern")
+      io.println("[ERROR] Raw event was: " <> string.inspect(raw_event))
+      Error(Nil)
     }
   }
 }
@@ -131,7 +140,20 @@ fn get_filename(path: String) -> String {
   }
 }
 
-// External calls
+fn format_timestamp(timestamp: Int) -> String {
+  // Simple timestamp formatting - shows last 6 digits for readability
+  let ts_str = string.inspect(timestamp)
+  let len = string.length(ts_str)
+  case len > 6 {
+    True -> {
+      let drop_count = len - 6
+      string.drop_start(ts_str, drop_count)
+    }
+    False -> ts_str
+  }
+}
+
+// External function calls
 @external(erlang, "file_watcher", "start_watching")
 fn erlang_start_watching(directory: String) -> WatcherRef
 
