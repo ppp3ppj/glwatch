@@ -14,7 +14,6 @@ fn get_events(watcher: WatcherRef) -> List(String)
 @external(erlang, "timer", "sleep")
 fn sleep(milliseconds: Int) -> Nil
 
-// Get current timestamp in milliseconds
 @external(erlang, "erlang", "system_time")
 fn system_time(unit: Int) -> Int
 
@@ -26,8 +25,8 @@ pub fn main() {
 fn print_banner() {
   io.println("╔════════════════════════════════════════╗")
   io.println("║   GLWATCH v1.0.0                      ║")
-  io.println("║   Real-time File System Monitor       ║")
-  io.println("║   by @ppp3ppj                         ║")
+  io.println("║   Smart File System Monitor           ║")
+  io.println("║   with Editor-Aware Filtering         ║")
   io.println("╚════════════════════════════════════════╝")
   io.println("")
 }
@@ -35,25 +34,25 @@ fn print_banner() {
 fn start_continuous_watch() {
   let watch_path = "./watched"
 
-  io.println("🚀 Initializing...")
+  io.println("🚀 Initializing smart watcher...")
   io.println("📂 Target: " <> watch_path)
+  io.println("🔧 Filters: Ignoring temp files, backups, swap files")
   io.println("")
 
   let watcher = start_watching(watch_path)
 
   io.println("✅ Watcher is now ACTIVE")
-  io.println("⚡ Real-time monitoring enabled")
+  io.println("⚡ Monitoring with intelligent deduplication")
   io.println("🛑 Press Ctrl+C to stop")
   io.println("")
-  io.println("📝 Test commands:")
-  io.println("   echo 'test' > watched/file.txt")
-  io.println("   mkdir watched/newdir")
-  io.println("   rm watched/file.txt")
+  io.println("📝 Try editing with vim/nvim:")
+  io.println("   vim watched/test.txt")
+  io.println("   (make changes and :w to save)")
   io.println("")
   io.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
   io.println("")
 
-  let start_time = system_time(1000)  // milliseconds
+  let start_time = system_time(1000)
   watch_loop(watcher, start_time, 0, 0)
 }
 
@@ -69,12 +68,11 @@ fn watch_loop(
 
   case event_count {
     0 -> {
-      // Heartbeat every 30 seconds
       case tick % 30 {
         0 -> {
           let elapsed = get_elapsed_time(start_time)
           io.println(
-            "💚 Active | Uptime: " <> elapsed <> " | Total Events: " <> int.to_string(
+            "💚 Watching | Uptime: " <> elapsed <> " | Events: " <> int.to_string(
               total_events,
             ),
           )
@@ -84,12 +82,11 @@ fn watch_loop(
       watch_loop(watcher, start_time, tick + 1, total_events)
     }
     _ -> {
-      // Events detected
-      let timestamp = get_current_time()
-      io.println("🔔 [" <> timestamp <> "] " <> int.to_string(event_count) <> " event(s):")
+      let timestamp = format_time()
+      io.println("🔔 [" <> timestamp <> "] Changes detected:")
 
       list.each(events, fn(event) {
-        io.println("   📄 " <> event)
+        io.println("   " <> event)
       })
       io.println("")
 
@@ -98,10 +95,21 @@ fn watch_loop(
   }
 }
 
-fn get_current_time() -> String {
+fn format_time() -> String {
   let ms = system_time(1000)
-  // Simple timestamp format (you can enhance this)
-  int.to_string(ms)
+  let secs = ms / 1000
+  let hours = { secs / 3600 } % 24
+  let minutes = { secs / 60 } % 60
+  let seconds = secs % 60
+
+  pad_zero(hours) <> ":" <> pad_zero(minutes) <> ":" <> pad_zero(seconds)
+}
+
+fn pad_zero(n: Int) -> String {
+  case n < 10 {
+    True -> "0" <> int.to_string(n)
+    False -> int.to_string(n)
+  }
 }
 
 fn get_elapsed_time(start_time: Int) -> String {
