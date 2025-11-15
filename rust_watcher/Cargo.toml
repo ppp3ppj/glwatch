@@ -6,7 +6,8 @@ edition = "2024"
 [dependencies]
 chrono = "0.4.42"
 notify = "8.1.0"
+rustler = { version = "0.37.0", features = ["nif_version_2_17", "derive"], default-features = false  }
 
-[[bin]]
+[lib]
 name = "rust_watcher"
-path = "src/main.rs"
+crate-type = ["dylib"]
