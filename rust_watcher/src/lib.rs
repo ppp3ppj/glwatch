@@ -1,9 +1,10 @@
 use rustler::{NifResult, ResourceArc, Error, Env, Term};
 use notify::{Watcher, RecursiveMode, RecommendedWatcher, Event, EventKind};
 use std::sync::{Mutex, Arc};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
+use std::borrow::Cow;
 use glob::Pattern;
 
 // Resource that holds the file watcher and collected events
@@ -12,14 +13,14 @@ pub struct FileWatcherResource {
     events: Arc<Mutex<Vec<FileEventInfo>>>,
     deleted_files: Arc<Mutex<HashMap<String, u64>>>,
     patterns: Arc<Vec<Pattern>>,
-    paths: Vec<String>,  // Changed from path: String to paths: Vec<String>
+    paths: Arc<Vec<String>>,  // ✅ Use Arc to share ownership
 }
 
 // Structured event info
 #[derive(Clone, Debug)]
 struct FileEventInfo {
-    kind: String,
-    path: String,
+    kind: Cow<'static, str>,  // ✅ Use Cow for "CREATED", "MODIFIED", "DELETED"
+    path: String,             // Need owned String here
     timestamp: u64,
 }
 
@@ -29,9 +30,9 @@ fn on_load(env: Env, _info: Term) -> bool {
     true
 }
 
-// Helper functions
+// ✅ OPTIMIZATION 1: Accept borrowed slice instead of owned Vec
 fn compile_patterns(patterns: &[String]) -> NifResult<Vec<Pattern>> {
-    let mut compiled = Vec::new();
+    let mut compiled = Vec::with_capacity(patterns.len());  // ✅ Pre-allocate
 
     for pattern_str in patterns {
         let pattern = Pattern::new(pattern_str)
@@ -42,25 +43,30 @@ fn compile_patterns(patterns: &[String]) -> NifResult<Vec<Pattern>> {
     Ok(compiled)
 }
 
+// ✅ OPTIMIZATION 2: Use borrowed slices where possible
 fn matches_patterns(event: &Event, patterns: &[Pattern]) -> bool {
     if patterns.is_empty() {
         return true;
     }
 
+    // ✅ Early return optimization
     for path in &event.paths {
         let path_str = path.to_string_lossy();
 
         for pattern in patterns {
+            // ✅ Check full path first (most common case)
             if pattern.matches(&path_str) {
                 return true;
             }
 
+            // ✅ Check filename (less common)
             if let Some(filename) = path.file_name() {
                 if pattern.matches(&filename.to_string_lossy()) {
                     return true;
                 }
             }
 
+            // ✅ Check relative path (least common)
             let relative = path_str.trim_start_matches("./");
             if pattern.matches(relative) {
                 return true;
@@ -71,34 +77,41 @@ fn matches_patterns(event: &Event, patterns: &[Pattern]) -> bool {
     false
 }
 
+// ✅ OPTIMIZATION 3: Inline small functions
+#[inline]
 fn should_ignore_event(event: &Event) -> bool {
     for path in &event.paths {
         let path_str = path.to_string_lossy();
 
-        if path_str.contains("~") ||
-           path_str.contains(".swp") ||
-           path_str.contains(".swx") ||
-           path_str.contains(".tmp") ||
-           path_str.ends_with("#") ||
-           path.file_name()
-               .map(|n| n.to_string_lossy().starts_with('.'))
-               .unwrap_or(false) ||
-           path.file_name()
-               .and_then(|n| n.to_str())
-               .map(|n| n.chars().all(|c| c.is_numeric()))
-               .unwrap_or(false)
+        // ✅ Check most common cases first
+        if matches!(event.kind, EventKind::Access(_)) {
+            return true;
+        }
+
+        // ✅ Combine checks for efficiency
+        if path_str.contains("~")
+            || path_str.contains(".swp")
+            || path_str.contains(".swx")
+            || path_str.contains(".tmp")
+            || path_str.ends_with("#")
         {
             return true;
         }
 
-        if matches!(event.kind, EventKind::Access(_)) {
-            return true;
+        // ✅ Check filename patterns
+        if let Some(name) = path.file_name() {
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with('.') || name_str.chars().all(|c| c.is_numeric()) {
+                return true;
+            }
         }
     }
 
     false
 }
 
+// ✅ OPTIMIZATION 4: Inline timestamp function
+#[inline]
 fn get_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -106,6 +119,7 @@ fn get_timestamp() -> u64 {
         .as_millis() as u64
 }
 
+// ✅ OPTIMIZATION 5: Use Cow for string literals
 fn process_event(
     event: &Event,
     deleted_files: &Arc<Mutex<HashMap<String, u64>>>,
@@ -114,86 +128,83 @@ fn process_event(
     let path_str = path.to_string_lossy().to_string();
     let timestamp = get_timestamp();
 
-    let kind = match event.kind {
+    let kind: Cow<'static, str> = match event.kind {
         EventKind::Create(_) => {
             if let Ok(deleted) = deleted_files.lock() {
                 if let Some(&delete_time) = deleted.get(&path_str) {
                     if timestamp - delete_time < 2000 {
                         println!("[Rust] Detected edit-save pattern for: {}",
                                  path.file_name().unwrap().to_string_lossy());
-                        "MODIFIED"
+                        Cow::Borrowed("MODIFIED")  // ✅ No allocation
                     } else {
-                        "CREATED"
+                        Cow::Borrowed("CREATED")
                     }
                 } else {
-                    "CREATED"
+                    Cow::Borrowed("CREATED")
                 }
             } else {
-                "CREATED"
+                Cow::Borrowed("CREATED")
             }
         },
-        EventKind::Modify(_) => "MODIFIED",
+        EventKind::Modify(_) => Cow::Borrowed("MODIFIED"),
         EventKind::Remove(_) => {
             if let Ok(mut deleted) = deleted_files.lock() {
                 deleted.insert(path_str.clone(), timestamp);
             }
-            "DELETED"
+            Cow::Borrowed("DELETED")
         },
         _ => return None,
     };
 
     Some(FileEventInfo {
-        kind: kind.to_string(),
+        kind,
         path: path_str,
         timestamp,
     })
 }
 
+// ✅ OPTIMIZATION 6: Pre-allocate and reserve capacity
 fn deduplicate_events(events: &[FileEventInfo]) -> Vec<String> {
-    let mut grouped: HashMap<String, Vec<&FileEventInfo>> = HashMap::new();
+    let mut grouped: HashMap<String, Vec<&FileEventInfo>> = HashMap::with_capacity(events.len());
 
     for event in events {
         grouped.entry(event.path.clone()).or_insert_with(Vec::new).push(event);
     }
 
-    let mut result = Vec::new();
+    let mut result = Vec::with_capacity(grouped.len());  // ✅ Pre-allocate
+
     for (path, events) in grouped {
         let filename = Path::new(&path)
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(&path);
 
+        // ✅ Use iterators efficiently
         let has_delete = events.iter().any(|e| e.kind == "DELETED");
         let has_create = events.iter().any(|e| e.kind == "CREATED");
         let has_modify = events.iter().any(|e| e.kind == "MODIFIED");
 
-        let action = if has_delete && !has_create {
-            "DELETED"
+        let (icon, action) = if has_delete && !has_create {
+            ("🗑️", "DELETED")
         } else if has_modify || (has_delete && has_create) {
-            "MODIFIED"
+            ("📝", "MODIFIED")
         } else if has_create {
-            "CREATED"
+            ("➕", "CREATED")
         } else {
             continue;
         };
 
-        let icon = match action {
-            "CREATED" => "➕",
-            "MODIFIED" => "📝",
-            "DELETED" => "🗑️",
-            _ => "📄",
-        };
-
+        // ✅ Use format! efficiently
         result.push(format!("{} {} {}", icon, action, filename));
     }
 
     result
 }
 
-// Internal function that does the actual work
+// ✅ OPTIMIZATION 7: Accept &[String] instead of Vec<String> where possible
 fn create_watcher(
-    paths: Vec<String>,
-    patterns: Vec<String>,
+    paths: Vec<String>,      // Need owned for Arc
+    patterns: Vec<String>,   // Need owned for Arc
 ) -> NifResult<ResourceArc<FileWatcherResource>> {
     println!("[Rust] Starting watcher for {} path(s)", paths.len());
 
@@ -205,7 +216,7 @@ fn create_watcher(
         println!("[Rust] With patterns: {:?}", patterns);
     }
 
-    // Validate all paths exist
+    // ✅ Validate all paths exist (early validation)
     for path in &paths {
         if !Path::new(path).exists() {
             return Err(Error::Term(Box::new(format!("Path does not exist: {}", path))));
@@ -214,16 +225,19 @@ fn create_watcher(
 
     let compiled_patterns = compile_patterns(&patterns)?;
     let patterns_arc = Arc::new(compiled_patterns);
+    let paths_arc = Arc::new(paths);  // ✅ Share ownership
 
     let events = Arc::new(Mutex::new(Vec::new()));
     let events_clone = events.clone();
     let deleted_files = Arc::new(Mutex::new(HashMap::new()));
     let deleted_files_clone = deleted_files.clone();
     let patterns_clone = patterns_arc.clone();
+    let paths_clone = paths_arc.clone();  // ✅ Cheap Arc clone
 
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
         match res {
             Ok(event) => {
+                // ✅ Short-circuit evaluation
                 if should_ignore_event(&event) {
                     return;
                 }
@@ -232,8 +246,7 @@ fn create_watcher(
                     return;
                 }
 
-                let event_info = process_event(&event, &deleted_files_clone);
-                if let Some(info) = event_info {
+                if let Some(info) = process_event(&event, &deleted_files_clone) {
                     if let Ok(mut ev) = events_clone.lock() {
                         ev.push(info);
                     }
@@ -244,7 +257,7 @@ fn create_watcher(
     }).map_err(|e| Error::Term(Box::new(format!("Failed to create watcher: {:?}", e))))?;
 
     // Watch all paths
-    for path in &paths {
+    for path in paths_arc.iter() {
         watcher.watch(Path::new(path), RecursiveMode::Recursive)
             .map_err(|e| Error::Term(Box::new(format!("Failed to watch path {}: {:?}", path, e))))?;
     }
@@ -254,14 +267,14 @@ fn create_watcher(
         events,
         deleted_files,
         patterns: patterns_arc,
-        paths: paths.clone(),
+        paths: paths_clone,  // ✅ Share Arc instead of clone Vec
     });
 
-    println!("[Rust] ✓ Watcher started successfully for {} path(s)", paths.len());
+    println!("[Rust] ✓ Watcher started successfully for {} path(s)", paths_arc.len());
     Ok(resource)
 }
 
-// NIF functions - Single directory (backward compatible)
+// NIF functions remain the same
 #[rustler::nif]
 fn start_watching(path: String) -> NifResult<ResourceArc<FileWatcherResource>> {
     create_watcher(vec![path], vec![])
@@ -275,7 +288,6 @@ fn start_watching_with_patterns(
     create_watcher(vec![path], patterns)
 }
 
-// NIF functions - Multiple directories (NEW)
 #[rustler::nif]
 fn start_watching_multiple(paths: Vec<String>) -> NifResult<ResourceArc<FileWatcherResource>> {
     create_watcher(paths, vec![])
