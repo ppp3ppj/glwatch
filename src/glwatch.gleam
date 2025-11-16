@@ -7,8 +7,17 @@ pub type WatcherRef
 @external(erlang, "file_watcher", "start_watching")
 fn start_watching(directory: String) -> WatcherRef
 
+@external(erlang, "file_watcher", "start_watching_with_patterns")
+fn start_watching_with_patterns(
+  directory: String,
+  patterns: List(String),
+) -> WatcherRef
+
 @external(erlang, "file_watcher", "get_events")
 fn get_events(watcher: WatcherRef) -> List(String)
+
+@external(erlang, "file_watcher", "stop_watching")
+fn stop_watching(watcher: WatcherRef) -> Bool
 
 @external(erlang, "timer", "sleep")
 fn sleep(milliseconds: Int) -> Nil
@@ -18,35 +27,74 @@ fn system_time(unit: Int) -> Int
 
 pub fn main() {
   print_banner()
-  start_continuous_watch()
+
+  // Example: Watch with patterns
+  start_with_patterns()
+
+  // Or watch everything:
+  // start_continuous_watch()
 }
 
 fn print_banner() {
   io.println("╔════════════════════════════════════════╗")
-  io.println("║   GLWATCH v1.0.0                      ║")
+  io.println("║   GLWATCH v1.1.0                      ║")
   io.println("║   Smart File System Monitor           ║")
-  io.println("║   with Editor-Aware Filtering         ║")
+  io.println("║   with Pattern Matching               ║")
   io.println("╚════════════════════════════════════════╝")
   io.println("")
 }
 
+// Watch with pattern matching
+fn start_with_patterns() {
+  let watch_path = "./watched"
+
+  // Define patterns to watch
+  let patterns = [
+    "**/*.gleam",  // All Gleam files
+    "**/*.js",     // All JavaScript files
+    "**/*.txt",    // All text files
+    "**/*.rs",    // All Rust files
+    // "src/**/*",  // Everything in src/
+  ]
+
+  io.println("🔍 Starting file watcher with patterns...")
+  io.println("📂 Target: " <> watch_path)
+  io.println("🎯 Patterns:")
+  list.each(patterns, fn(p) { io.println("   • " <> p) })
+  io.println("")
+
+  let watcher = start_watching_with_patterns(watch_path, patterns)
+
+  io.println("✅ Watcher started successfully!")
+  io.println("⚡ Monitoring file system changes")
+  io.println("🛑 Press Ctrl+C to stop")
+  io.println("")
+  io.println("💡 Try creating files:")
+  io.println("   echo 'test' > watched/test.txt     (✓ will show)")
+  io.println("   echo 'test' > watched/test.js      (✓ will show)")
+  io.println("   echo 'test' > watched/test.log     (✗ will not show)")
+  io.println("")
+  io.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+  io.println("")
+
+  let start_time = system_time(1000)
+  watch_loop(watcher, start_time, 0, 0)
+}
+
+// Watch everything (no patterns)
 fn start_continuous_watch() {
   let watch_path = "./watched"
 
-  io.println("🚀 Initializing smart watcher...")
-  io.println("📂 Target: " <> watch_path)
-  io.println("🔧 Filters: Ignoring temp files, backups, swap files")
+  io.println("🔍 Starting file watcher...")
+  io.println("📂 Watching: " <> watch_path)
+  io.println("🎯 Mode: All files")
   io.println("")
 
   let watcher = start_watching(watch_path)
 
-  io.println("✅ Watcher is now ACTIVE")
-  io.println("⚡ Monitoring with intelligent deduplication")
+  io.println("✅ Watcher started successfully!")
+  io.println("⚡ Monitoring file system changes")
   io.println("🛑 Press Ctrl+C to stop")
-  io.println("")
-  io.println("📝 Try editing with vim/nvim:")
-  io.println("   vim watched/test.txt")
-  io.println("   (make changes and :w to save)")
   io.println("")
   io.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
   io.println("")
@@ -84,9 +132,7 @@ fn watch_loop(
       let timestamp = format_time()
       io.println("🔔 [" <> timestamp <> "] Changes detected:")
 
-      list.each(events, fn(event) {
-        io.println("   " <> event)
-      })
+      list.each(events, fn(event) { io.println("   " <> event) })
       io.println("")
 
       watch_loop(watcher, start_time, tick + 1, total_events + event_count)
@@ -120,9 +166,11 @@ fn get_elapsed_time(start_time: Int) -> String {
 
   case hours > 0 {
     True -> int.to_string(hours) <> "h " <> int.to_string(minutes % 60) <> "m"
-    False -> case minutes > 0 {
-      True -> int.to_string(minutes) <> "m " <> int.to_string(seconds % 60) <> "s"
-      False -> int.to_string(seconds) <> "s"
-    }
+    False ->
+      case minutes > 0 {
+        True ->
+          int.to_string(minutes) <> "m " <> int.to_string(seconds % 60) <> "s"
+        False -> int.to_string(seconds) <> "s"
+      }
   }
 }
