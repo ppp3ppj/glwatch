@@ -12,3 +12,9 @@ glob = "0.3.2"
 [lib]
 name = "rust_watcher"
 crate-type = ["dylib"]
+
+[profile.release]
+opt-level = 3          # Maximum optimization
+lto = true             # Link-time optimization
+codegen-units = 1      # Better optimization
+strip = true           # Remove debug symbols
