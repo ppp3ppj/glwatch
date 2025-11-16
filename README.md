@@ -451,7 +451,7 @@ echo "test" > watched/test.txt
 
 ## Todos
 
-- [ ] Pattern matching (glob patterns: `*.js`, `src/**/*.gleam`)
+- [x] Pattern matching (glob patterns: `*.js`, `src/**/*.gleam`)
 - [ ] Ignore file support (`.gitignore` integration)
 - [ ] Multiple directory watching
 - [ ] Configuration file support
