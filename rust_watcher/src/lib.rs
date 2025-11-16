@@ -12,7 +12,7 @@ pub struct FileWatcherResource {
     events: Arc<Mutex<Vec<FileEventInfo>>>,
     deleted_files: Arc<Mutex<HashMap<String, u64>>>,
     patterns: Arc<Vec<Pattern>>,
-    path: String,
+    paths: Vec<String>,  // Changed from path: String to paths: Vec<String>
 }
 
 // Structured event info
@@ -192,17 +192,24 @@ fn deduplicate_events(events: &[FileEventInfo]) -> Vec<String> {
 
 // Internal function that does the actual work
 fn create_watcher(
-    path: String,
+    paths: Vec<String>,
     patterns: Vec<String>,
 ) -> NifResult<ResourceArc<FileWatcherResource>> {
-    println!("[Rust] Starting watcher for: {}", path);
+    println!("[Rust] Starting watcher for {} path(s)", paths.len());
+
+    for path in &paths {
+        println!("[Rust]   - {}", path);
+    }
 
     if !patterns.is_empty() {
         println!("[Rust] With patterns: {:?}", patterns);
     }
 
-    if !Path::new(&path).exists() {
-        return Err(Error::Term(Box::new(format!("Path does not exist: {}", path))));
+    // Validate all paths exist
+    for path in &paths {
+        if !Path::new(path).exists() {
+            return Err(Error::Term(Box::new(format!("Path does not exist: {}", path))));
+        }
     }
 
     let compiled_patterns = compile_patterns(&patterns)?;
@@ -214,7 +221,7 @@ fn create_watcher(
     let deleted_files_clone = deleted_files.clone();
     let patterns_clone = patterns_arc.clone();
 
-    let watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+    let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
         match res {
             Ok(event) => {
                 if should_ignore_event(&event) {
@@ -236,29 +243,28 @@ fn create_watcher(
         }
     }).map_err(|e| Error::Term(Box::new(format!("Failed to create watcher: {:?}", e))))?;
 
+    // Watch all paths
+    for path in &paths {
+        watcher.watch(Path::new(path), RecursiveMode::Recursive)
+            .map_err(|e| Error::Term(Box::new(format!("Failed to watch path {}: {:?}", path, e))))?;
+    }
+
     let resource = ResourceArc::new(FileWatcherResource {
         watcher: Mutex::new(Some(watcher)),
         events,
         deleted_files,
         patterns: patterns_arc,
-        path: path.clone(),
+        paths: paths.clone(),
     });
 
-    if let Ok(mut w) = resource.watcher.lock() {
-        if let Some(watcher) = w.as_mut() {
-            watcher.watch(Path::new(&path), RecursiveMode::Recursive)
-                .map_err(|e| Error::Term(Box::new(format!("Failed to watch path: {:?}", e))))?;
-        }
-    }
-
-    println!("[Rust] ✓ Watcher started successfully");
+    println!("[Rust] ✓ Watcher started successfully for {} path(s)", paths.len());
     Ok(resource)
 }
 
-// NIF functions
+// NIF functions - Single directory (backward compatible)
 #[rustler::nif]
 fn start_watching(path: String) -> NifResult<ResourceArc<FileWatcherResource>> {
-    create_watcher(path, vec![])
+    create_watcher(vec![path], vec![])
 }
 
 #[rustler::nif]
@@ -266,7 +272,21 @@ fn start_watching_with_patterns(
     path: String,
     patterns: Vec<String>,
 ) -> NifResult<ResourceArc<FileWatcherResource>> {
-    create_watcher(path, patterns)
+    create_watcher(vec![path], patterns)
+}
+
+// NIF functions - Multiple directories (NEW)
+#[rustler::nif]
+fn start_watching_multiple(paths: Vec<String>) -> NifResult<ResourceArc<FileWatcherResource>> {
+    create_watcher(paths, vec![])
+}
+
+#[rustler::nif]
+fn start_watching_multiple_with_patterns(
+    paths: Vec<String>,
+    patterns: Vec<String>,
+) -> NifResult<ResourceArc<FileWatcherResource>> {
+    create_watcher(paths, patterns)
 }
 
 #[rustler::nif]
@@ -287,7 +307,7 @@ fn get_events(watcher: ResourceArc<FileWatcherResource>) -> Vec<String> {
 
 #[rustler::nif]
 fn stop_watching(watcher: ResourceArc<FileWatcherResource>) -> bool {
-    println!("[Rust] Stopping watcher for: {}", watcher.path);
+    println!("[Rust] Stopping watcher for {} path(s)", watcher.paths.len());
 
     if let Ok(mut w) = watcher.watcher.lock() {
         *w = None;

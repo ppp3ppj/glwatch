@@ -4,12 +4,23 @@ import gleam/int
 
 pub type WatcherRef
 
+// Single directory (backward compatible)
 @external(erlang, "file_watcher", "start_watching")
 fn start_watching(directory: String) -> WatcherRef
 
 @external(erlang, "file_watcher", "start_watching_with_patterns")
 fn start_watching_with_patterns(
   directory: String,
+  patterns: List(String),
+) -> WatcherRef
+
+// Multiple directories (NEW)
+@external(erlang, "file_watcher", "start_watching_multiple")
+fn start_watching_multiple(directories: List(String)) -> WatcherRef
+
+@external(erlang, "file_watcher", "start_watching_multiple_with_patterns")
+fn start_watching_multiple_with_patterns(
+  directories: List(String),
   patterns: List(String),
 ) -> WatcherRef
 
@@ -28,34 +39,79 @@ fn system_time(unit: Int) -> Int
 pub fn main() {
   print_banner()
 
-  // Example: Watch with patterns
-  start_with_patterns()
-
-  // Or watch everything:
-  // start_continuous_watch()
+  // Choose your mode:
+  // start_with_patterns()           // Single directory with patterns
+  // start_continuous_watch()        // Single directory, all files
+  //start_multiple_directories()    // Multiple directories (NEW!)
+  start_multiple_with_patterns()    // Multiple derictories with patterns
 }
 
 fn print_banner() {
   io.println("╔════════════════════════════════════════╗")
-  io.println("║   GLWATCH v1.1.0                      ║")
+  io.println("║   GLWATCH v1.2.0                      ║")
   io.println("║   Smart File System Monitor           ║")
-  io.println("║   with Pattern Matching               ║")
+  io.println("║   with Multi-Directory Support        ║")
   io.println("╚════════════════════════════════════════╝")
   io.println("")
 }
 
-// Watch with pattern matching
+// NEW: Watch multiple directories
+fn start_multiple_directories() {
+  let watch_paths = ["./watched", "./src", "./test"]
+
+  io.println("🔍 Starting file watcher for multiple directories...")
+  io.println("📂 Watching:")
+  list.each(watch_paths, fn(p) { io.println("   • " <> p) })
+  io.println("")
+
+  let watcher = start_watching_multiple(watch_paths)
+
+  io.println("✅ Watcher started successfully!")
+  io.println("⚡ Monitoring file system changes in all directories")
+  io.println("🛑 Press Ctrl+C to stop")
+  io.println("")
+  io.println("💡 Try creating files in any watched directory:")
+  io.println("   echo 'test' > watched/test.txt")
+  io.println("   echo 'code' > src/new.gleam")
+  io.println("   echo 'test' > test/new_test.gleam")
+  io.println("")
+  io.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+  io.println("")
+
+  let start_time = system_time(1000)
+  watch_loop(watcher, start_time, 0, 0)
+}
+
+// NEW: Watch multiple directories with patterns
+fn start_multiple_with_patterns() {
+  let watch_paths = ["./watched", "./src", "./test"]
+  let patterns = ["**/*.gleam", "**/*.js", "**/*.txt"]
+
+  io.println("🔍 Starting file watcher for multiple directories...")
+  io.println("📂 Watching:")
+  list.each(watch_paths, fn(p) { io.println("   • " <> p) })
+  io.println("")
+  io.println("🎯 Patterns:")
+  list.each(patterns, fn(p) { io.println("   • " <> p) })
+  io.println("")
+
+  let watcher = start_watching_multiple_with_patterns(watch_paths, patterns)
+
+  io.println("✅ Watcher started successfully!")
+  io.println("⚡ Monitoring file system changes")
+  io.println("🛑 Press Ctrl+C to stop")
+  io.println("")
+  io.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+  io.println("")
+
+  let start_time = system_time(1000)
+  watch_loop(watcher, start_time, 0, 0)
+}
+
+// Watch single directory with patterns
 fn start_with_patterns() {
   let watch_path = "./watched"
-
-  // Define patterns to watch
-  let patterns = [
-    "**/*.gleam",  // All Gleam files
-    "**/*.js",     // All JavaScript files
-    "**/*.txt",    // All text files
-    "**/*.rs",    // All Rust files
-    // "src/**/*",  // Everything in src/
-  ]
+  let patterns = ["**/*.gleam", "**/*.js", "**/*.txt"]
 
   io.println("🔍 Starting file watcher with patterns...")
   io.println("📂 Target: " <> watch_path)
@@ -69,11 +125,6 @@ fn start_with_patterns() {
   io.println("⚡ Monitoring file system changes")
   io.println("🛑 Press Ctrl+C to stop")
   io.println("")
-  io.println("💡 Try creating files:")
-  io.println("   echo 'test' > watched/test.txt     (✓ will show)")
-  io.println("   echo 'test' > watched/test.js      (✓ will show)")
-  io.println("   echo 'test' > watched/test.log     (✗ will not show)")
-  io.println("")
   io.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
   io.println("")
 
@@ -81,7 +132,7 @@ fn start_with_patterns() {
   watch_loop(watcher, start_time, 0, 0)
 }
 
-// Watch everything (no patterns)
+// Watch single directory (all files)
 fn start_continuous_watch() {
   let watch_path = "./watched"
 
