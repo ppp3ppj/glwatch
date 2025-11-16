@@ -1,0 +1,21 @@
+# GLWATCH Custom Configuration
+
+[js]
+patterns = ["**/*.js"]
+status = ["MODIFIED", "CREATED"]
+command = "npm run build"
+
+[haskell]
+patterns = ["**/*.hs"]
+status = [""]
+command = "echo 'Haskell is changed brother!'"
+
+[gleam]
+patterns = ["**/*.gleam"]
+status = ["*"]
+command = "gleam build"
+
+[rust]
+patterns = ["**/*.rs"]
+status = ["*"]
+command = "echo 'Rust is here'""
