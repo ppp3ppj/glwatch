@@ -2,7 +2,7 @@
 # Author: @ppp3ppj
 # Date: 2025-11-15
 
-.PHONY: help build clean run test install dev watch release all
+.PHONY: help build clean run rtest gtest install dev watch release all
 
 # Detect OS
 UNAME_S := $(shell uname -s)
@@ -52,8 +52,9 @@ help:
 	@echo "  make watch          - Watch for changes and rebuild"
 	@echo ""
 	@echo "$(YELLOW)Testing:$(NC)"
-	@echo "  make test           - Run tests"
+	@echo "  make rtest           - Run Rust tests"
 	@echo "  make test-create    - Create test files"
+	@echo "  make gtest           - Run Gleam tests"
 	@echo ""
 	@echo "$(YELLOW)Cleaning:$(NC)"
 	@echo "  make clean          - Clean all build artifacts"
@@ -125,8 +126,14 @@ release: clean
 	gleam build
 	@echo "$(GREEN)✓ Release build complete!$(NC)"
 
+## test: Run all tests
+gtest:
+	@echo "$(YELLOW)Running Gleam tests...$(NC)"
+	gleam test
+	@echo "$(GREEN)✓ Tests passed$(NC)"
+
 ## test: Run tests
-test:
+rtest:
 	@echo "$(YELLOW)Running Gleam tests...$(NC)"
 	gleam test
 	@echo "$(YELLOW)Running Rust tests...$(NC)"
