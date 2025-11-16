@@ -1,5 +1,12 @@
 -module(file_watcher).
--export([start_watching/1, start_watching_with_patterns/2, get_events/1, stop_watching/1]).
+-export([
+    start_watching/1,
+    start_watching_with_patterns/2,
+    start_watching_multiple/1,
+    start_watching_multiple_with_patterns/2,
+    get_events/1,
+    stop_watching/1
+]).
 -on_load(init/0).
 
 init() ->
@@ -25,14 +32,21 @@ init() ->
             {error, Reason}
     end.
 
-%% Start watching without patterns (watch everything)
+%% Single directory - backward compatible
 start_watching(_Directory) ->
     erlang:nif_error(nif_not_loaded).
 
-%% Start watching with glob patterns
 start_watching_with_patterns(_Directory, _Patterns) ->
     erlang:nif_error(nif_not_loaded).
 
+%% Multiple directories - NEW
+start_watching_multiple(_Directories) ->
+    erlang:nif_error(nif_not_loaded).
+
+start_watching_multiple_with_patterns(_Directories, _Patterns) ->
+    erlang:nif_error(nif_not_loaded).
+
+%% Common functions
 get_events(_WatcherRef) ->
     erlang:nif_error(nif_not_loaded).
 

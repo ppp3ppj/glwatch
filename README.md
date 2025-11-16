@@ -453,7 +453,7 @@ echo "test" > watched/test.txt
 
 - [x] Pattern matching (glob patterns: `*.js`, `src/**/*.gleam`)
 - [ ] Ignore file support (`.gitignore` integration)
-- [ ] Multiple directory watching
+- [x] Multiple directory watching
 - [ ] Configuration file support
 - [ ] Custom action triggers (run commands on events)
 - [ ] Webhook support
