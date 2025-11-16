@@ -1,7 +1,6 @@
 import gleam/io
 import gleam/list
 import gleam/int
-import gleam/string
 
 pub type WatcherRef
 
