@@ -56,14 +56,21 @@ make run
 
 ```
 ╔════════════════════════════════════════╗
-║   GLWATCH v1.0.0                      ║
+║   GLWATCH v1.2.0                      ║
 ║   Smart File System Monitor           ║
+║   with Multi-Directory Support        ║
 ╚════════════════════════════════════════╝
 
-✅ Watcher is now ACTIVE
-📂 Watching: ./watched
-🛑 Press Ctrl+C to stop
+🔍 Starting file watcher for multiple directories...
+📂 Watching:
+   • ./watched
+   • ./src
+   • ./test
 
+🎯 Patterns:
+   • **/*.gleam
+   • **/*.js
+   • **/*.txt
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 💚 Watching | Uptime: 0s | Events: 0
@@ -210,7 +217,8 @@ make setup         # Initial setup (install + build)
 make build         # Build everything
 make run           # Run the application
 make clean         # Clean all build artifacts
-make test          # Run tests
+make rtest         # Run rust tests
+make gtest         # Run gleam tests
 make format        # Format code
 make check         # Run linters
 ```
@@ -470,16 +478,21 @@ echo "test" > watched/test.txt
 
 ### v1.0.0 (2025-11-15)
 
-- ✨ Initial release
-- ✅ Real-time file monitoring
-- ✅ Smart edit detection
-- ✅ Event filtering and deduplication
-- ✅ Cross-platform support (Linux, macOS, Windows)
-- ✅ Makefile build automation
-- ✅ Comprehensive documentation
+- Real-time file monitoring
+- Smart edit detection
+- Event filtering and deduplication
+- Cross-platform support (Linux, macOS, Windows)
+- Makefile build automation
+- Comprehensive documentation
+
+### v1.2.0 (2025-11-15)
+
+- Pattern matching (glob patterns: `*.js`, `src/**/*.gleam`)
+- Multi-Directory wathing support
+- Better Performance
 
 ---
 
 **Made with ❤️ using Gleam, Rust, and Erlang**
 
-*Last updated: 2025-11-15*
+*Last updated: 2025-11-16*
